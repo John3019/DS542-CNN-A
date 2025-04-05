@@ -28,17 +28,36 @@ class MRIDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
+
+
     def __getitem__(self, idx):
         path = self.image_paths[idx]
         dcm = pydicom.dcmread(path)
         image = dcm.pixel_array.astype(np.float32)
+
+        # Handle problematic shapes
+        if image.ndim == 3 and image.shape[0] == 1:
+            image = image[0]  # squeeze single channel
+        elif image.ndim == 1:
+            raise ValueError(f"Unexpected 1D image shape: {image.shape} in file {path}")
+        elif image.ndim > 3:
+            raise ValueError(f"Too many dimensions: {image.shape} in file {path}")
+
+        # Resize
         image = cv2.resize(image, (224, 224))
 
-        image = image / np.max(image)  # normalize
-        if image.ndim == 2:
-            image = np.stack([image]*3, axis=-1)
+        # Normalize
+        image = image / np.max(image) if np.max(image) > 0 else image
 
-        image = Image.fromarray((image * 255).astype(np.uint8))  # convert to PIL
+        # Convert grayscale to RGB
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+
+        # Convert to uint8 and to PIL image
+        try:
+            image = Image.fromarray((image * 255).astype(np.uint8))
+        except Exception as e:
+            raise ValueError(f"Failed to convert image from file {path} to PIL format. Shape: {image.shape}, Error: {e}")
 
         patient_id = dcm.PatientID
         row = self.df[self.df["Subject"] == patient_id]
@@ -48,6 +67,7 @@ class MRIDataset(Dataset):
             image = self.transform(image)
 
         return image, label_str
+
 
 
 
