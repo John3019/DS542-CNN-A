@@ -13,6 +13,7 @@ import pydicom
 import cv2
 from tqdm.auto import tqdm
 import wandb
+from PIL import Image
 
 class MRIDataset(Dataset):
     def __init__(self, image_dir, csv_path, transform=None):
@@ -34,8 +35,10 @@ class MRIDataset(Dataset):
         image = cv2.resize(image, (224, 224))
 
         image = image / np.max(image)  # normalize
-        if image.ndim == 2:  # grayscale to RGB
+        if image.ndim == 2:
             image = np.stack([image]*3, axis=-1)
+
+        image = Image.fromarray((image * 255).astype(np.uint8))  # convert to PIL
 
         patient_id = dcm.PatientID
         row = self.df[self.df["Subject"] == patient_id]
@@ -45,6 +48,7 @@ class MRIDataset(Dataset):
             image = self.transform(image)
 
         return image, label_str
+
 
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
