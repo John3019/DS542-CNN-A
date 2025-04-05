@@ -23,6 +23,5 @@ file_names_updated=list(file_names_updated)
 #print(patient_details_df.columns.tolist())
 
 matching_rows = patient_details_df[patient_details_df['Subject'].isin(file_names_updated)]
-print(matching_rows.columns.tolist())
 diagnostic_count=matching_rows['Group'].value_counts()
 print(diagnostic_count)

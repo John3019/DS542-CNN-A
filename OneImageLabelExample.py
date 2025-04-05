@@ -5,6 +5,7 @@ import os
 
 
 patient_details_df=pd.read_csv('/projectnb/dl4ds/students/atuladas/DS542-CNN-A/Project-Datase.csv')
+print(len(patient_details_df))
 dicom_path='/projectnb/dl4ds/students/atuladas/DS542-CNN-A/Midline Train Test/train/006_S_4192_2011-09-27_Slice_86.dcm'
 file_path=os.path.basename(dicom_path)
 subject_id='_'.join(file_path.split('_')[:3])
