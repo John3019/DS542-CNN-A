@@ -32,7 +32,10 @@ class MRIDataset(Dataset):
         dcm = pydicom.dcmread(path)
         image = dcm.pixel_array.astype(np.float32)
         image = cv2.resize(image, (224, 224))
-        image = np.stack([image]*3, axis=-1) / np.max(image)
+
+        image = image / np.max(image)  # normalize
+        if image.ndim == 2:  # grayscale to RGB
+            image = np.stack([image]*3, axis=-1)
 
         patient_id = dcm.PatientID
         row = self.df[self.df["Subject"] == patient_id]
@@ -42,6 +45,7 @@ class MRIDataset(Dataset):
             image = self.transform(image)
 
         return image, label_str
+
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
     device = CONFIG["device"]
@@ -97,7 +101,7 @@ def main():
         "model": "ResNet50-Alzheimers",
         "batch_size": 8,
         "learning_rate": 0.001,
-        "epochs": 10,
+        "epochs": 5,
         "num_workers": 4,
         "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
         "data_dir": "Midline Train Test/train",
