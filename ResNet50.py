@@ -11,9 +11,10 @@ import pandas as pd
 import numpy as np
 import pydicom
 import cv2
+from PIL import Image
 from tqdm.auto import tqdm
 import wandb
-from PIL import Image
+import argparse
 
 class MRIDataset(Dataset):
     def __init__(self, image_dir, csv_path, transform=None):
@@ -28,20 +29,18 @@ class MRIDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-
     def __getitem__(self, idx):
         path = self.image_paths[idx]
         dcm = pydicom.dcmread(path)
         image = dcm.pixel_array.astype(np.float32)
 
-        # Handle edge cases
+        # Handle 3D volumes
         if image.ndim == 3 and image.shape[-1] > 1:
-            # It's a volume, take the middle slice
             image = image[:, :, image.shape[-1] // 2]
         elif image.ndim == 3 and image.shape[0] == 1:
             image = image[0]
         elif image.ndim == 1:
-            raise ValueError(f"Unexpected 1D shape: {image.shape} in {path}")
+            raise ValueError(f"Unexpected 1D image shape: {image.shape} in {path}")
         elif image.ndim > 3:
             raise ValueError(f"Too many dimensions: {image.shape} in {path}")
 
@@ -54,7 +53,7 @@ class MRIDataset(Dataset):
         try:
             image = Image.fromarray((image * 255).astype(np.uint8))
         except Exception as e:
-            raise ValueError(f"Failed to convert image from file {path} to PIL. Shape: {image.shape}. Error: {e}")
+            raise ValueError(f"Failed to convert image from file {path} to PIL format. Shape: {image.shape}, Error: {e}")
 
         patient_id = dcm.PatientID
         row = self.df[self.df["Subject"] == patient_id]
@@ -64,7 +63,6 @@ class MRIDataset(Dataset):
             image = self.transform(image)
 
         return image, label_str
-
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
     device = CONFIG["device"]
@@ -116,19 +114,27 @@ def validate(model, loader, criterion, device):
     return running_loss / len(loader), 100. * correct / total
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--learning_rate", type=float, default=0.001)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"])
+    args = parser.parse_args()
+
     CONFIG = {
         "model": "ResNet50-Alzheimers",
-        "batch_size": 8,
-        "learning_rate": 0.001,
-        "epochs": 5,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "optimizer": args.optimizer,
+        "epochs": 10,
         "num_workers": 4,
-        "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
         "data_dir": "Midline Train Test/train",
         "csv_path": "Project-Datase.csv",
         "wandb_project": "alzheimers-dx"
     }
 
     transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.5]*3, [0.5]*3),
     ])
@@ -146,7 +152,11 @@ def main():
     model = model.to(CONFIG["device"])
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    if CONFIG["optimizer"] == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=CONFIG["learning_rate"], momentum=0.9)
+
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
     wandb.init(project=CONFIG["wandb_project"], config=CONFIG)
