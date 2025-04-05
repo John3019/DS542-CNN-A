@@ -1,8 +1,8 @@
-method: bayes  # or 'random' or 'grid'
+program: ResNet50.py
+method: bayes
 metric:
   name: val_acc
   goal: maximize
-
 parameters:
   learning_rate:
     min: 0.00001
