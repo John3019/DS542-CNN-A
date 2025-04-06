@@ -185,3 +185,6 @@ def main():
             "val/acc": val_acc,
             "epoch": epoch + 1
         })
+
+if __name__ == "__main__":
+	main()
