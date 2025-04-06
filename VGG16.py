@@ -92,7 +92,7 @@ def main():
 
     transform_train = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.Grayscale(num_output_channels=3),  # Convert 1-channel to 3
+    transforms.Grayscale(num_output_channels=3),  
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])])
@@ -105,5 +105,10 @@ def main():
 
 
 
-    vgg16=models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+    model=models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+    model.fc=nn.Linear(vgg.fc.in_features,3)
+    model = model.to(CONFIG["model"])
+
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+
 
