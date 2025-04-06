@@ -29,24 +29,39 @@ class AlzheimerDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        fname, label_str = self.data[idx]
-        path = os.path.join(self.dicom_dir, fname)
-
-        # Load and normalize DICOM image
+        path = self.image_paths[idx]
         dcm = pydicom.dcmread(path)
-        img = dcm.pixel_array.astype(np.float32)
-        img -= img.min()
-        img /= (img.max() + 1e-5)
+        image = dcm.pixel_array.astype(np.float32)
 
-        # Convert to 3 channels by repeating
-        img = np.stack([img]*3, axis=0)  # Shape: (3, H, W)
-        img_tensor = torch.tensor(img)
+        # Handle 3D volumes
+        if image.ndim == 3 and image.shape[-1] > 1:
+            image = image[:, :, image.shape[-1] // 2]
+        elif image.ndim == 3 and image.shape[0] == 1:
+            image = image[0]
+        elif image.ndim == 1:
+            raise ValueError(f"Unexpected 1D image shape: {image.shape} in {path}")
+        elif image.ndim > 3:
+            raise ValueError(f"Too many dimensions: {image.shape} in {path}")
+
+        image = cv2.resize(image, (224, 224))
+        image = image / np.max(image) if np.max(image) > 0 else image
+
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+
+        try:
+            image = Image.fromarray((image * 255).astype(np.uint8))
+        except Exception as e:
+            raise ValueError(f"Failed to convert image from file {path} to PIL format. Shape: {image.shape}, Error: {e}")
+
+        patient_id = dcm.PatientID
+        row = self.df[self.df["Subject"] == patient_id]
+        label_str = row.iloc[0]["Group"] if not row.empty else "CN"
 
         if self.transform:
-            img_tensor = self.transform(img_tensor)
+            image = self.transform(image)
 
-        label = self.label_to_idx[label_str]
-        return img_tensor, label
+        return image, label_str
 
 
 
