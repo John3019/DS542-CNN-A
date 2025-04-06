@@ -17,26 +17,14 @@ import wandb
 import argparse
 
 class AlzheimerDataset(Dataset):
-    def __init__(self,image_dir,csv_path,transform=None):
-        self.dicom_dir=image_dir
-        self.transform=transform
-
-        self.metadata=pd.read_csv(csv_path)
-        self.file_names=os.listdir(dicom_dir)
-        self.subject_ids = ['_'.join(fname.split('_')[:3]) for fname in self.file_names]
-        self.labels_df = self.metadata[self.metadata['Subject'].isin(self.subject_ids)]
-        self.labels_df = self.labels_df.set_index('Subject')
-
-        self.data = []
-        for fname in self.file_names:
-            subject_id = '_'.join(fname.split('_')[:3])
-            if subject_id in self.labels_df.index:
-                label = self.labels_df.loc[subject_id, 'Group']
-                self.data.append((fname, label))
-
-        
-        self.label_to_idx = {label: idx for idx, label in enumerate(sorted(self.labels_df['Group'].unique()))}
-
+    def __init__(self, image_dir, csv_path, transform=None):
+        self.image_paths = [
+            os.path.join(root, file)
+            for root, _, files in os.walk(image_dir)
+            for file in files if file.endswith(".dcm")
+        ]
+        self.df = pd.read_csv(csv_path)
+        self.transform = transform
     def __len__(self):
         return len(self.data)
 
