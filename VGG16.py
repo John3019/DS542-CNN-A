@@ -26,7 +26,7 @@ class AlzheimerDataset(Dataset):
         self.df = pd.read_csv(csv_path)
         self.transform = transform
     def __len__(self):
-        return len(self.data)
+        return len(self.image_paths)
 
     def __getitem__(self, idx):
         path = self.image_paths[idx]
@@ -71,8 +71,7 @@ def train(epoch, model, loader, optimizer, criterion, CONFIG):
     device = CONFIG["device"]
     model.train()
     running_loss, correct, total = 0.0, 0, 0
-    labels = labels.to(device)
-
+    label_map = {"CN": 0, "MCI": 1, "AD": 2}  # ❗Necessary for label encoding
 
     progress_bar = tqdm(loader, desc=f"Epoch {epoch+1}/{CONFIG['epochs']} [Train]", leave=False)
     for i, (inputs, labels) in enumerate(progress_bar):
