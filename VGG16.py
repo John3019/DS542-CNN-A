@@ -19,6 +19,55 @@ import argparse
 class AlzheimerDataset(Dataset):
     def __init__(self,image_dir,csv_path,transform=None):
 
+def train(epoch, model, loader, optimizer, criterion, CONFIG):
+    device = CONFIG["device"]
+    model.train()
+    running_loss, correct, total = 0.0, 0, 0
+    label_map = {"CN": 0, "MCI": 1, "AD": 2}
+
+    progress_bar = tqdm(loader, desc=f"Epoch {epoch+1}/{CONFIG['epochs']} [Train]", leave=False)
+    for i, (inputs, labels) in enumerate(progress_bar):
+        inputs = inputs.to(device)
+        labels = torch.tensor([label_map[label] for label in labels]).to(device)
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, predicted = outputs.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+
+        progress_bar.set_postfix({"loss": running_loss / (i + 1), "acc": 100. * correct / total})
+
+    return running_loss / len(loader), 100. * correct / total
+
+def validate(model, loader, criterion, device):
+    model.eval()
+    running_loss, correct, total = 0.0, 0, 0
+    label_map = {"CN": 0, "MCI": 1, "AD": 2}
+
+    with torch.no_grad():
+        progress_bar = tqdm(loader, desc="[Validate]", leave=False)
+        for i, (inputs, labels) in enumerate(progress_bar):
+            inputs = inputs.to(device)
+            labels = torch.tensor([label_map[label] for label in labels]).to(device)
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+
+            running_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+
+            progress_bar.set_postfix({"loss": running_loss / (i+1), "acc": 100. * correct / total})
+
+    return running_loss / len(loader), 100. * correct / total
+
 
 def main():
     parser=argparse.ArgumentParser()
@@ -40,3 +89,21 @@ def main():
         "csv_path": "Project-Datase.csv",
         "wandb_project": "Danke Thomas-Müller"
     }
+
+    transform_train = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=3),  # Convert 1-channel to 3
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])])
+    
+    transform_test = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=3),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])])
+
+
+
+    vgg16=models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+
