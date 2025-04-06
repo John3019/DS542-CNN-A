@@ -5,12 +5,12 @@ metric:
   goal: maximize
 parameters:
   epochs:
-    values: [10, 25, 50]
+    values: [10, 25]
   learning_rate:
     min: 0.0001
     max: 0.001
   batch_size:
-    values: [4, 8, 16]
+    values: [4, 8]
   optimizer:
     values: ["adam", "sgd"]
 
