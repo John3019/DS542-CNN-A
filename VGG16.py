@@ -18,12 +18,58 @@ import argparse
 
 class AlzheimerDataset(Dataset):
     def __init__(self,image_dir,csv_path,transform=None):
+        self.dicom_dir=image_dir
+        self.transform=transform
+
+        self.metadata=pd.read_csv(csv_path)
+        self.file_names=os.listdir(dicom_dir)
+        self.subject_ids = ['_'.join(fname.split('_')[:3]) for fname in self.file_names]
+        self.labels_df = self.metadata[self.metadata['Subject'].isin(self.subject_ids)]
+        self.labels_df = self.labels_df.set_index('Subject')
+
+        self.data = []
+        for fname in self.file_names:
+            subject_id = '_'.join(fname.split('_')[:3])
+            if subject_id in self.labels_df.index:
+                label = self.labels_df.loc[subject_id, 'Group']
+                self.data.append((fname, label))
+
+        
+        self.label_to_idx = {label: idx for idx, label in enumerate(sorted(self.labels_df['Group'].unique()))}
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        fname, label_str = self.data[idx]
+        path = os.path.join(self.dicom_dir, fname)
+
+        # Load and normalize DICOM image
+        dcm = pydicom.dcmread(path)
+        img = dcm.pixel_array.astype(np.float32)
+        img -= img.min()
+        img /= (img.max() + 1e-5)
+
+        # Convert to 3 channels by repeating
+        img = np.stack([img]*3, axis=0)  # Shape: (3, H, W)
+        img_tensor = torch.tensor(img)
+
+        if self.transform:
+            img_tensor = self.transform(img_tensor)
+
+        label = self.label_to_idx[label_str]
+        return img_tensor, label
+
+
+
+
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
     device = CONFIG["device"]
     model.train()
     running_loss, correct, total = 0.0, 0, 0
-    label_map = {"CN": 0, "MCI": 1, "AD": 2}
+    labels = labels.to(device)
+
 
     progress_bar = tqdm(loader, desc=f"Epoch {epoch+1}/{CONFIG['epochs']} [Train]", leave=False)
     for i, (inputs, labels) in enumerate(progress_bar):
@@ -70,13 +116,13 @@ def validate(model, loader, criterion, device):
 
 
 def main():
-    parser=argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"])
     parser.add_argument("--epochs", type=int, default=10)
     args = parser.parse_args()
-    
+
     CONFIG = {
         "model": "VGG16_Alzheimers",
         "batch_size": args.batch_size,
@@ -90,25 +136,52 @@ def main():
         "wandb_project": "Danke Thomas-Müller"
     }
 
+    wandb.init(project=CONFIG["wandb_project"], config=CONFIG)
+
     transform_train = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.Grayscale(num_output_channels=3),  
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])])
-    
+        transforms.Resize((224, 224)),
+        transforms.Grayscale(num_output_channels=3),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])
+    ])
+
     transform_test = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.Grayscale(num_output_channels=3),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])])
+        transforms.Resize((224, 224)),
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.40], std=[0.229, 0.224, 0.225])
+    ])
 
+    full_dataset = AlzheimerDataset(CONFIG["data_dir"], CONFIG["csv_path"], transform=transform_train)
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
+    val_dataset.dataset.transform = transform_test
 
-    model=models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-    model.fc=nn.Linear(vgg.fc.in_features,3)
-    model = model.to(CONFIG["model"])
+    train_loader = DataLoader(train_dataset, batch_size=CONFIG["batch_size"], shuffle=True, num_workers=CONFIG["num_workers"])
+    val_loader = DataLoader(val_dataset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
+
+    model = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+    model.classifier[6] = nn.Linear(model.classifier[6].in_features, 3)
+    model = model.to(CONFIG["device"])
+
+    if CONFIG["optimizer"] == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=CONFIG["learning_rate"], momentum=0.9)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-
+    for epoch in range(CONFIG["epochs"]):
+        train_loss, train_acc = train(epoch, model, train_loader, optimizer, criterion, CONFIG)
+        val_loss, val_acc = validate(model, val_loader, criterion, CONFIG["device"])
+        
+        wandb.log({
+            "train/loss": train_loss,
+            "train/acc": train_acc,
+            "val/loss": val_loss,
+            "val/acc": val_acc,
+            "epoch": epoch + 1
+        })
