@@ -12,25 +12,34 @@ import argparse
 from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.model_selection import train_test_split
-import torchvision.models as models
-from torchvision.models import ResNet50_Weights
 
-# Custom ResNet50 adapted for 3D MRI input
+# Custom full 3D ResNet50 model
 class ResNet50_3D(nn.Module):
     def __init__(self, num_classes=3):
         super(ResNet50_3D, self).__init__()
-        base_model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-
         self.conv1 = nn.Conv3d(1, 64, kernel_size=(3,7,7), stride=(1,2,2), padding=(1,3,3), bias=False)
         self.bn1 = nn.BatchNorm3d(64)
-        self.relu = base_model.relu
-        self.maxpool = base_model.maxpool
-        self.layer1 = base_model.layer1
-        self.layer2 = base_model.layer2
-        self.layer3 = base_model.layer3
-        self.layer4 = base_model.layer4
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+
+        self.layer1 = self._make_layer(64, 64, blocks=3)
+        self.layer2 = self._make_layer(64, 128, blocks=4, stride=2)
+        self.layer3 = self._make_layer(128, 256, blocks=6, stride=2)
+        self.layer4 = self._make_layer(256, 512, blocks=3, stride=2)
+
         self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
-        self.fc = nn.Linear(base_model.fc.in_features, num_classes)
+        self.fc = nn.Linear(512, num_classes)
+
+    def _make_layer(self, in_channels, out_channels, blocks, stride=1):
+        layers = []
+        layers.append(nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False))
+        layers.append(nn.BatchNorm3d(out_channels))
+        layers.append(nn.ReLU(inplace=True))
+        for _ in range(1, blocks):
+            layers.append(nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False))
+            layers.append(nn.BatchNorm3d(out_channels))
+            layers.append(nn.ReLU(inplace=True))
+        return nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -183,10 +192,10 @@ def main():
 
     model = ResNet50_3D(num_classes=3).to(CONFIG['device'])
     criterion = nn.CrossEntropyLoss()
-    if CONFIG["optimizer"] == "adam":
-        optimizer = optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    if CONFIG['optimizer'] == 'adam':
+        optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
     else:
-        optimizer = optim.SGD(model.parameters(), lr=CONFIG["learning_rate"], momentum=0.9)
+        optimizer = optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9)
 
     wandb.init(project=CONFIG['wandb_project'], config=CONFIG)
     wandb.watch(model)
