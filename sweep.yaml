@@ -13,5 +13,3 @@ parameters:
     values: [4, 8, 16]
   optimizer:
     values: ["adam", "sgd"]
-
-count: 15
