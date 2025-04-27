@@ -5,7 +5,7 @@ metric:
   goal: maximize
 parameters:
   epochs:
-    values: [10, 25, 50]
+    values: [5, 10, 15, 20]
   learning_rate:
     min: 0.0001
     max: 0.001
