@@ -22,7 +22,7 @@ class ResNet50_3D(nn.Module):
         base_model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 
         self.conv1 = nn.Conv3d(1, 64, kernel_size=(3,7,7), stride=(1,2,2), padding=(1,3,3), bias=False)
-        self.bn1 = base_model.bn1
+        self.bn1 = nn.BatchNorm3d(64)
         self.relu = base_model.relu
         self.maxpool = base_model.maxpool
         self.layer1 = base_model.layer1
