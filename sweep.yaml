@@ -1,4 +1,4 @@
-program: ResNet50-3D.py
+program: ResNet18.py
 method: bayes
 metric:
   name: val_acc
