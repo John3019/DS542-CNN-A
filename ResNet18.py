@@ -233,7 +233,8 @@ def main():
         wandb.log({'train_loss': tr_loss, 'train_acc': tr_acc, 'val_loss': val_loss, 'val_acc': val_acc, 'epoch': epoch+1})
         if val_acc > best_acc:
             best_acc = val_acc
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save(model.state_dict(), '/scratch/jsbu2024/best_model.pth')
+
 
     test_loss, test_acc = validate(model, test_loader, criterion, CONFIG['device'])
     print(f"Test Acc: {test_acc:.2f}% | Test Loss: {test_loss:.4f}")
