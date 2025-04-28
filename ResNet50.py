@@ -129,7 +129,7 @@ def main():
         "epochs": args.epochs,
         "num_workers": 4,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "data_dir": "Midline Train Test/train",
+        "data_dir": "Data Test/train",
         "csv_path": "Project-Datase.csv",
         "wandb_project": "alzheimers-dx"
     }
