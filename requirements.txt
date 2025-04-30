@@ -5,5 +5,6 @@ wandb
 numpy
 pandas
 matplotlib
-argparse
 pydicom
+opencv-python
+argparse
