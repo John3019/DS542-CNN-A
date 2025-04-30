@@ -9,11 +9,39 @@ import pydicom
 import cv2
 import wandb
 import argparse
+import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.model_selection import train_test_split
 
-# Custom full 3D ResNet50 model
+# Store activations globally
+activations = {}
+
+def get_activation(name):
+    def hook(model, input, output):
+        activations[name] = output.detach().cpu()
+    return hook
+
+def log_activation_map(model, loader, device, label='activation_map'):
+    model.eval()
+    inputs, _ = next(iter(loader))
+    inputs = inputs.to(device)
+    with torch.no_grad():
+        _ = model(inputs)
+
+    fmap = activations['layer1'][0]  # First sample in batch
+    D = fmap.shape[1] // 2  # Middle depth slice
+    channels_to_show = min(6, fmap.shape[0])
+
+    fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
+    for i in range(channels_to_show):
+        axes[i].imshow(fmap[i, D], cmap='viridis')
+        axes[i].axis('off')
+        axes[i].set_title(f"Ch {i}")
+    plt.tight_layout()
+    wandb.log({label: wandb.Image(fig)})
+    plt.close()
+
 class ResNet50_3D(nn.Module):
     def __init__(self, num_classes=3):
         super(ResNet50_3D, self).__init__()
@@ -31,14 +59,17 @@ class ResNet50_3D(nn.Module):
         self.fc = nn.Linear(512, num_classes)
 
     def _make_layer(self, in_channels, out_channels, blocks, stride=1):
-        layers = []
-        layers.append(nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False))
-        layers.append(nn.BatchNorm3d(out_channels))
-        layers.append(nn.ReLU(inplace=True))
+        layers = [
+            nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+            nn.BatchNorm3d(out_channels),
+            nn.ReLU(inplace=True)
+        ]
         for _ in range(1, blocks):
-            layers.append(nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False))
-            layers.append(nn.BatchNorm3d(out_channels))
-            layers.append(nn.ReLU(inplace=True))
+            layers.extend([
+                nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm3d(out_channels),
+                nn.ReLU(inplace=True)
+            ])
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -107,13 +138,7 @@ def pad_collate(batch):
     volumes, labels = zip(*batch)
     depths = [v.shape[1] for v in volumes]
     maxD = max(depths)
-    padded = []
-    for v in volumes:
-        D = v.shape[1]
-        pad_f = (maxD - D)//2
-        pad_b = maxD - D - pad_f
-        v_p = F.pad(v, (0,0, 0,0, pad_f, pad_b))
-        padded.append(v_p)
+    padded = [F.pad(v, (0,0, 0,0, (maxD - v.shape[1])//2, maxD - v.shape[1] - (maxD - v.shape[1])//2)) for v in volumes]
     vol_batch = torch.stack(padded, dim=0)
     label_batch = torch.tensor([{'CN':0,'MCI':1,'AD':2}[l] for l in labels])
     return vol_batch, label_batch
@@ -191,11 +216,9 @@ def main():
     test_loader = DataLoader(test_ds_full, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=CONFIG['num_workers'], collate_fn=pad_collate)
 
     model = ResNet50_3D(num_classes=3).to(CONFIG['device'])
+    model.layer1.register_forward_hook(get_activation('layer1'))
     criterion = nn.CrossEntropyLoss()
-    if CONFIG['optimizer'] == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
-    else:
-        optimizer = optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate']) if CONFIG['optimizer'] == 'adam' else optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9)
 
     wandb.init(project=CONFIG['wandb_project'], config=CONFIG)
     wandb.watch(model)
@@ -206,6 +229,10 @@ def main():
         tr_loss, tr_acc = train(epoch, model, train_loader, optimizer, criterion, CONFIG)
         val_loss, val_acc = validate(model, val_loader, criterion, CONFIG['device'])
         wandb.log({'train_loss': tr_loss, 'train_acc': tr_acc, 'val_loss': val_loss, 'val_acc': val_acc, 'epoch': epoch+1})
+
+        # Log activation maps to wandb
+        log_activation_map(model, val_loader, CONFIG['device'])
+
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), 'best_model.pth')
