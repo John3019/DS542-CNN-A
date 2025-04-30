@@ -150,17 +150,24 @@ class MRIDataset(Dataset):
 def pad_collate(batch):
     volumes, labels = zip(*batch)
     depths = [v.shape[1] for v in volumes]
-    maxD = max(depths)
+    heights = [v.shape[2] for v in volumes]
+    widths = [v.shape[3] for v in volumes]
+
+    maxD, maxH, maxW = max(depths), max(heights), max(widths)
+
     padded = []
     for v in volumes:
-        D = v.shape[1]
-        pad_f = (maxD - D)//2
-        pad_b = maxD - D - pad_f
-        v_p = F.pad(v, (0,0, 0,0, pad_f, pad_b))
+        C, D, H, W = v.shape
+        pad_d = (maxD - D) // 2, maxD - D - (maxD - D) // 2
+        pad_h = (maxH - H) // 2, maxH - H - (maxH - H) // 2
+        pad_w = (maxW - W) // 2, maxW - W - (maxW - W) // 2
+        v_p = F.pad(v, pad_w + pad_h + pad_d)  # Note: pad order is reverse: (W, H, D)
         padded.append(v_p)
+
     vol_batch = torch.stack(padded, dim=0)
-    label_batch = torch.tensor([{'CN':0,'MCI':1,'AD':2}[l] for l in labels])
+    label_batch = torch.tensor([{'CN': 0, 'MCI': 1, 'AD': 2}[l] for l in labels])
     return vol_batch, label_batch
+
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
     model.train()
