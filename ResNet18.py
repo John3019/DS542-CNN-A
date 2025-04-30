@@ -213,7 +213,7 @@ def main():
         'learning_rate': args.learning_rate,
         'optimizer': args.optimizer,
         'epochs': args.epochs,
-        'num_workers': 0,
+        'num_workers': 4,
         'train_dir': 'Data/train',
         'test_dir': 'Data/test',
         'csv_path': 'Project-Datase.csv',
