@@ -9,9 +9,37 @@ import pydicom
 import cv2
 import wandb
 import argparse
+import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.model_selection import train_test_split
+
+activations = {}
+
+def get_activation(name):
+    def hook(model, input, output):
+        activations[name] = output.detach().cpu()
+    return hook
+
+def log_activation_map(model, loader, device, label='activation_map'):
+    model.eval()
+    inputs, _ = next(iter(loader))
+    inputs = inputs.to(device)
+    with torch.no_grad():
+        _ = model(inputs)
+
+    fmap = activations['layer1'][0]  # First sample in batch
+    D = fmap.shape[1] // 2  # Middle depth slice
+    channels_to_show = min(6, fmap.shape[0])
+
+    fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
+    for i in range(channels_to_show):
+        axes[i].imshow(fmap[i, D], cmap='viridis')
+        axes[i].axis('off')
+        axes[i].set_title(f"Ch {i}")
+    plt.tight_layout()
+    wandb.log({label: wandb.Image(fig)})
+    plt.close()
 
 class BasicBlock3D(nn.Module):
     expansion = 1
@@ -216,11 +244,10 @@ def main():
     test_loader = DataLoader(test_ds_full, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=CONFIG['num_workers'], collate_fn=pad_collate)
 
     model = ResNet18_3D(num_classes=3).to(CONFIG['device'])
+    model.layer1.register_forward_hook(get_activation('layer1'))
+
     criterion = nn.CrossEntropyLoss()
-    if CONFIG['optimizer'] == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
-    else:
-        optimizer = optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate']) if CONFIG['optimizer'] == 'adam' else optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9)
 
     wandb.init(project=CONFIG['wandb_project'], config=CONFIG)
     wandb.watch(model)
@@ -231,6 +258,10 @@ def main():
         tr_loss, tr_acc = train(epoch, model, train_loader, optimizer, criterion, CONFIG)
         val_loss, val_acc = validate(model, val_loader, criterion, CONFIG['device'])
         wandb.log({'train_loss': tr_loss, 'train_acc': tr_acc, 'val_loss': val_loss, 'val_acc': val_acc, 'epoch': epoch+1})
+
+        # Log activation maps to wandb
+        log_activation_map(model, val_loader, CONFIG['device'])
+
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), 'best_model.pth')
