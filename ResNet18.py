@@ -22,28 +22,30 @@ def get_activation(name):
     return hook
 
 def log_activation_map(model, loader, device, label='activation_map'):
-    model.eval()
-    inputs, _ = next(iter(loader))
-    inputs = inputs.to(device)
-    with torch.no_grad():
-        _ = model(inputs)
+    try:
+        model.eval()
+        inputs, _ = next(iter(loader))
+        inputs = inputs.to(device)
+        with torch.no_grad():
+            _ = model(inputs)
 
-    fmap = activations['layer1'][0]
-    D = fmap.shape[1] // 2
-    channels_to_show = min(6, fmap.shape[0])
+        fmap = activations['layer1'][0]
+        D = fmap.shape[1] // 2
+        channels_to_show = min(6, fmap.shape[0])
 
-    fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
-    for i in range(channels_to_show):
-        axes[i].imshow(fmap[i, D], cmap='viridis')
-        axes[i].axis('off')
-        axes[i].set_title(f"Ch {i}")
-    plt.tight_layout()
-    wandb.log({label: wandb.Image(fig)})
-    plt.close()
+        fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
+        for i in range(channels_to_show):
+            axes[i].imshow(fmap[i, D], cmap='viridis')
+            axes[i].axis('off')
+            axes[i].set_title(f"Ch {i}")
+        plt.tight_layout()
+        wandb.log({label: wandb.Image(fig)})
+        plt.close()
+    except Exception as e:
+        print(f"[WARN] Skipping activation map logging: {e}")
 
 class BasicBlock3D(nn.Module):
     expansion = 1
-
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock3D, self).__init__()
         self.conv1 = nn.Conv3d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -51,14 +53,12 @@ class BasicBlock3D(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv3d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm3d(planes)
-
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != planes:
             self.shortcut = nn.Sequential(
                 nn.Conv3d(in_planes, planes, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm3d(planes)
             )
-
     def forward(self, x):
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
@@ -130,15 +130,17 @@ class MRIDataset(Dataset):
         paths = self.groups[(subject, visit)]
         slices = []
         for path in paths:
-            dcm = pydicom.dcmread(path)
-            pix = dcm.pixel_array.astype(np.float32)
-            if pix.ndim == 2:
-                slices.append(pix)
-            elif pix.ndim == 3:
-                for z in range(pix.shape[0]):
-                    slices.append(pix[z])
-            else:
-                raise ValueError(f"Unsupported dims={pix.ndim}")
+            try:
+                dcm = pydicom.dcmread(path)
+                pix = dcm.pixel_array.astype(np.float32)
+                if pix.ndim == 2:
+                    slices.append(pix)
+                elif pix.ndim == 3:
+                    for z in range(pix.shape[0]):
+                        slices.append(pix[z])
+            except Exception as e:
+                print(f"[ERROR] reading {path}: {e}")
+                continue
         if not slices:
             raise RuntimeError(f"No slices for {subject} {visit}")
         volume = np.stack(slices, axis=0)
@@ -152,22 +154,18 @@ def pad_collate(batch):
     depths = [v.shape[1] for v in volumes]
     heights = [v.shape[2] for v in volumes]
     widths = [v.shape[3] for v in volumes]
-
     maxD, maxH, maxW = max(depths), max(heights), max(widths)
-
     padded = []
     for v in volumes:
         C, D, H, W = v.shape
         pad_d = (maxD - D) // 2, maxD - D - (maxD - D) // 2
         pad_h = (maxH - H) // 2, maxH - H - (maxH - H) // 2
         pad_w = (maxW - W) // 2, maxW - W - (maxW - W) // 2
-        v_p = F.pad(v, pad_w + pad_h + pad_d)  # Note: pad order is reverse: (W, H, D)
+        v_p = F.pad(v, pad_w + pad_h + pad_d)
         padded.append(v_p)
-
     vol_batch = torch.stack(padded, dim=0)
     label_batch = torch.tensor([{'CN': 0, 'MCI': 1, 'AD': 2}[l] for l in labels])
     return vol_batch, label_batch
-
 
 def train(epoch, model, loader, optimizer, criterion, CONFIG):
     model.train()
@@ -215,7 +213,7 @@ def main():
         'learning_rate': args.learning_rate,
         'optimizer': args.optimizer,
         'epochs': args.epochs,
-        'num_workers': 4,
+        'num_workers': 0,
         'train_dir': 'Data/train',
         'test_dir': 'Data/test',
         'csv_path': 'Project-Datase.csv',
