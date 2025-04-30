@@ -28,8 +28,8 @@ def log_activation_map(model, loader, device, label='activation_map'):
     with torch.no_grad():
         _ = model(inputs)
 
-    fmap = activations['layer1'][0]  # First sample in batch
-    D = fmap.shape[1] // 2  # Middle depth slice
+    fmap = activations['layer1'][0]
+    D = fmap.shape[1] // 2
     channels_to_show = min(6, fmap.shape[0])
 
     fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
@@ -70,17 +70,14 @@ class ResNet18_3D(nn.Module):
     def __init__(self, num_classes=3):
         super(ResNet18_3D, self).__init__()
         self.in_planes = 64
-
         self.conv1 = nn.Conv3d(1, 64, kernel_size=7, stride=(1,2,2), padding=(3,3,3), bias=False)
         self.bn1 = nn.BatchNorm3d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
-
         self.layer1 = self._make_layer(BasicBlock3D, 64, 2, stride=1)
         self.layer2 = self._make_layer(BasicBlock3D, 128, 2, stride=2)
         self.layer3 = self._make_layer(BasicBlock3D, 256, 2, stride=2)
         self.layer4 = self._make_layer(BasicBlock3D, 512, 2, stride=2)
-
         self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
         self.fc = nn.Linear(512, num_classes)
 
@@ -97,21 +94,18 @@ class ResNet18_3D(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
 
 class MRIDataset(Dataset):
-    def __init__(self, image_dir, csv_path, target_size=(64,64)):
+    def __init__(self, image_dir, csv_path):
         self.df = pd.read_csv(csv_path)
-        self.target_size = target_size
         groups = {}
         for root, _, files in os.walk(image_dir):
             for file_name in files:
@@ -148,9 +142,6 @@ class MRIDataset(Dataset):
         if not slices:
             raise RuntimeError(f"No slices for {subject} {visit}")
         volume = np.stack(slices, axis=0)
-        mn, mx = volume.min(), volume.max()
-        volume = (volume - mn) / (mx - mn + 1e-5)
-        volume = np.stack([cv2.resize(s, self.target_size) for s in volume], axis=0)
         tensor = torch.from_numpy(volume).unsqueeze(0)
         row = self.df[self.df['Subject'] == subject]
         label = row.iloc[0]['Group'] if not row.empty else 'CN'
@@ -258,10 +249,7 @@ def main():
         tr_loss, tr_acc = train(epoch, model, train_loader, optimizer, criterion, CONFIG)
         val_loss, val_acc = validate(model, val_loader, criterion, CONFIG['device'])
         wandb.log({'train_loss': tr_loss, 'train_acc': tr_acc, 'val_loss': val_loss, 'val_acc': val_acc, 'epoch': epoch+1})
-
-        # Log activation maps to wandb
         log_activation_map(model, val_loader, CONFIG['device'])
-
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), 'best_model.pth')
