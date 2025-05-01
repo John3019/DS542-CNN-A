@@ -28,8 +28,8 @@ def log_activation_map(model, loader, device, label='activation_map'):
     with torch.no_grad():
         _ = model(inputs)
 
-    fmap = activations['conv_layer_1'][0]  # First sample in batch
-    D = fmap.shape[1] // 2  # Middle depth slice
+    fmap = activations['conv_layer_1'][0]  
+    D = fmap.shape[1] // 2  
     channels_to_show = min(6, fmap.shape[0])
 
     fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
