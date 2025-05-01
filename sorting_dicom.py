@@ -2,13 +2,6 @@ import os
 import pydicom
 
 def sort_and_rename_dicoms(root_dir):
-    """
-    Sort and rename the DICOM files for per visit using the naming convention
-
-    Input:
-        root_dir (str): folder containing the DICOM dataset
-    """
-
     #Path to go through in the given directory: go through all folders and subfolders
     for subdir, _, files in os.walk(root_dir):
 
