@@ -28,8 +28,8 @@ def log_activation_map(model, loader, device, label='activation_map'):
     with torch.no_grad():
         _ = model(inputs)
 
-    fmap = activations['conv_layer_1'][0]  # First sample in batch
-    D = fmap.shape[1] // 2  # Middle depth slice
+    fmap = activations['conv_layer_1'][0]  
+    D = fmap.shape[1] // 2  
     channels_to_show = min(6, fmap.shape[0])
 
     fig, axes = plt.subplots(1, channels_to_show, figsize=(15, 4))
@@ -90,13 +90,13 @@ class MRIDataset(Dataset):
         return len(self.keys)                                                                               #return the total number of visits per subject
 
     def __getitem__(self, idx):
-        subject, visit = self.keys[idx]                                                         # get subject ID and visit date
-        paths = self.groups[(subject, visit)]                                                   # get paths to DICOM slices
-        slices = []                                                                             # list to hold individual 2D slices
+        subject, visit = self.keys[idx]                                                         #get subject ID and visit date
+        paths = self.groups[(subject, visit)]                                                   #get paths to DICOM slices
+        slices = []                                                                             #list to hold individual 2D slices
 
         for path in paths:
-            dcm = pydicom.dcmread(path)                                                         # read DICOM file
-            pix = dcm.pixel_array.astype(np.float32)                                            # get pixel array
+            dcm = pydicom.dcmread(path)                                                         #read DICOM file
+            pix = dcm.pixel_array.astype(np.float32)                                            #get pixel array
 
             if pix.ndim == 2:
                 slices.append(pix)
@@ -109,14 +109,11 @@ class MRIDataset(Dataset):
         if not slices:
             raise RuntimeError(f"No slices for {subject} {visit}")
 
-        # Stack into a 3D volume
         volume = np.stack(slices, axis=0)
 
-        # Normalize
         mn, mx = volume.min(), volume.max()
         volume = (volume - mn) / (mx - mn + 1e-5)
 
-        # Crop 25% from each side and resize
         cropped_resized = []
         for s in volume:
             h, w = s.shape
@@ -126,11 +123,9 @@ class MRIDataset(Dataset):
             s_resized = cv2.resize(s_cropped, self.target_size)
             cropped_resized.append(s_resized)
 
-        # Stack final volume
         volume = np.stack(cropped_resized, axis=0)
-        tensor = torch.from_numpy(volume).unsqueeze(0)  # add channel dimension
+        tensor = torch.from_numpy(volume).unsqueeze(0)  
 
-        # Retrieve label
         row = self.df[self.df['Subject'] == subject]
         label = row.iloc[0]['Group'] if not row.empty else 'CN'
 
