@@ -4,16 +4,6 @@ import shutil
 import re
 
 def patient_split_train_test(input_dir, output_dir, train_ratio = 0.8, seed = 13):
-    """
-    Splits dataset of DICOM files into training and test sets based off of patient ID
-
-    Input:
-        input_dir (str): path to the DICOM dataset
-        output_dir (str): output path for the train/test folders
-        train_ratio (float): ratio of data in train/test set
-        seed (int): random seed
-    """
-
     random.seed(seed)           #set the random seed
     
     subject_ID_to_files = {}    #initialize dictionary to map subject IDs to files
