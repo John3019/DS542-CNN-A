@@ -13,6 +13,8 @@ from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.model_selection import train_test_split
 
+activation = {}
+
 # Custom full 3D VGG16 model
 class VGG16_3D(nn.Module):
     def __init__(self, num_classes=3):
@@ -61,6 +63,10 @@ class VGG16_3D(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
+def get_activation(name):
+    def hook(model, input, output):
+        activation[name] = output.detach()
+    return hook
 
 class MRIDataset(Dataset):
     def __init__(self, image_dir, csv_path, target_size=(64,64)):
@@ -168,12 +174,12 @@ def main():
     CONFIG = {
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         'batch_size': args.batch_size,
-        'learning_rate': args.learning_rate,
+        'learning_rate': 0.0001,
         'optimizer': args.optimizer,
-        'epochs': args.epochs,
+        'epochs': 20,
         'num_workers': 4,
-        'train_dir': 'Data/train',
-        'test_dir': 'Data/test',
+        'train_dir': 'train',
+        'test_dir': 'test',
         'csv_path': 'Project-Datase.csv',
         'wandb_project': 'alzheimers-vgg16-3d'
     }
@@ -198,6 +204,8 @@ def main():
     test_loader = DataLoader(test_ds_full, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=CONFIG['num_workers'], collate_fn=pad_collate)
 
     model = VGG16_3D(num_classes=3).to(CONFIG['device'])
+    model.layer4.register_forward_hook(get_activation('layer4'))
+
     criterion = nn.CrossEntropyLoss()
     if CONFIG['optimizer'] == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
@@ -221,6 +229,32 @@ def main():
     print(f"Test Acc: {test_acc:.2f}% | Test Loss: {test_loss:.4f}")
     wandb.log({'test_acc': test_acc, 'test_loss': test_loss})
     wandb.finish()
+    sample_input, _ = test_ds_full[0]
+    sample_input = sample_input.unsqueeze(0).to(CONFIG['device'])  # Add batch dim
+    model.eval()
+    _ = model(sample_input)  # Trigger forward pass
+    
+    # Retrieve and process activations
+    act = activation['layer4'].squeeze(0).cpu()  # shape: (C, D, H, W)
+    
+    # Average across channels to get a heatmap
+    heatmap = act.mean(dim=0)  # shape: (D, H, W)
+    
+    # Pick middle slice
+    mid_slice = heatmap.shape[0] // 2
+    slice_img = heatmap[mid_slice]
+    
+    # Normalize for visualization
+    slice_img = (slice_img - slice_img.min()) / (slice_img.max() - slice_img.min() + 1e-5)
+    
+    # Plot using matplotlib
+    import matplotlib.pyplot as plt
+    plt.imshow(slice_img.numpy(), cmap='inferno')
+    plt.title('Activation Map from layer4 (Middle Slice)')
+    plt.axis('off')
+    plt.savefig("activation_map.png")
+    plt.show()
+
 
 if __name__ == '__main__':
     main()
