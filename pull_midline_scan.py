@@ -3,14 +3,6 @@ import shutil
 import re
 
 def pull_midline_scan(root_dir, output_dir):
-    """
-    Find the middle DICOM slice per patient 
-
-    Input:
-        root_dir (str): path to root folder with all DICOM dataset
-        output_dir (str): path to output folder where midline slices will go
-    """
-    
     completed_subjects = set()                          #track patients (subject_ID, date) that have already been added to the lis
     slice_number = re.compile(r"Slice_(\d+)\.dcm$")     #extract the slice number from the file name
 
