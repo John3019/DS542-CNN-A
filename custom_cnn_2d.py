@@ -48,7 +48,7 @@ class MRIDataset(Dataset):
         self.df = pd.read_csv(csv_path)
         self.image_paths = []
 
-        print(f"🔍 Checking {len(all_paths)} DICOM files for 2D validity...")
+        print(f"Checking {len(all_paths)} DICOM files for 2D validity...")
 
         for path in all_paths:
             try:
@@ -57,11 +57,11 @@ class MRIDataset(Dataset):
                 if image.ndim == 2:
                     self.image_paths.append(path)
                 else:
-                    print(f"❌ Skipping non-2D image: {path} (shape: {image.shape})")
+                    print(f"Skipping non-2D image: {path} (shape: {image.shape})")
             except Exception as e:
-                print(f"❌ Could not read file: {path}, error: {e}")
+                print(f"Could not read file: {path}, error: {e}")
 
-        print(f"✅ Final usable 2D DICOMs: {len(self.image_paths)}")
+        print(f"Final usable 2D DICOMs: {len(self.image_paths)}")
 
     def __len__(self):
         return len(self.image_paths)
@@ -133,7 +133,7 @@ def validate(model, loader, criterion, device):
     return running_loss / len(loader), 100. * correct / total
 
 def main():
-    print("🔥 Starting training script...")
+    print("Starting training script...")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--learning_rate", type=float, default=0.001)
@@ -193,7 +193,7 @@ def main():
             wandb.save("best_model_cnn2d.pth")
 
     test_loss, test_acc = validate(model, testloader, criterion, CONFIG["device"])
-    print(f"✅ Test Accuracy: {test_acc:.2f}%, Test Loss: {test_loss:.4f}")
+    print(f"Test Accuracy: {test_acc:.2f}%, Test Loss: {test_loss:.4f}")
     wandb.log({"test_acc": test_acc, "test_loss": test_loss})
 
     wandb.finish()
