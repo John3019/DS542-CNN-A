@@ -2,17 +2,8 @@ import os
 import re
 
 def count_patient_visits(root_dir):
-    """
-    Counts the number of MRI sets in a directory of DICOM files
-
-    Input:
-        root_dir (str): path to the folder containing the DICOM dataset
-
-    Output:
-        int: total number of patient visits
-    """
     visit_count = 0
-    visits = set()          #to track (subject_ID, date) pairs
+    visits = set()                              #to track (subject_ID, date) pairs
 
     for filename in os.listdir(root_dir):       #loop through all files in folder
         if not filename.endswith(".dcm"):       #skip files that are not DICOM format
