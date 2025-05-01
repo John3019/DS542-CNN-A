@@ -41,29 +41,31 @@ def log_activation_map(model, loader, device, label='activation_map'):
     wandb.log({label: wandb.Image(fig)})
     plt.close()
 
+#Custom CNN that analyzes 3D Images 
 class Custom_CNN(nn.Module):
-    def __init__(self, in_channels=1, num_classes=3):
-        super(Custom_CNN, self).__init__()
-        self.conv_layer_1 = nn.Conv3d(in_channels, 32, kernel_size=3, padding=1)
-        self.batch_normal_1 = nn.BatchNorm3d(32)
-        self.pooling_layer_1 = nn.MaxPool3d(2)
+    def __init__(self, in_channels=1, num_classes=3):                                   #initialize model with 1 in_channel for grayscale and 3 for num_classes for CN, MCI, AD
+        super(Custom_CNN, self).__init__()                                              #parent constructor
+        self.conv_layer_1 = nn.Conv3d(in_channels, 32, kernel_size=3, padding=1)        #first convolutional layer 3D
+        self.batch_normal_1 = nn.BatchNorm3d(32)                                        #normalize the output of the first convolutional layer
+        self.pooling_layer_1 = nn.MaxPool3d(2)                                          #downsample by factor of 2
 
-        self.conv_layer_2 = nn.Conv3d(32, 64, kernel_size=3, padding=1)
-        self.batch_normal_2 = nn.BatchNorm3d(64)
-        self.pooling_layer_2 = nn.MaxPool3d(2)
+        self.conv_layer_2 = nn.Conv3d(32, 64, kernel_size=3, padding=1)                 #second convolutional layer 3D
+        self.batch_normal_2 = nn.BatchNorm3d(64)                                        #normalize the output of the second convolutional layer
+        self.pooling_layer_2 = nn.MaxPool3d(2)                                          #downsample by factor of 2
 
-        self.conv_layer_3 = nn.Conv3d(64, 128, kernel_size=3, padding=1)
-        self.batch_normal_3 = nn.BatchNorm3d(128)
-        self.pooling_layer_3 = nn.AdaptiveAvgPool3d(1)
+        self.conv_layer_3 = nn.Conv3d(64, 128, kernel_size=3, padding=1)                #third convolutional layer 3D
+        self.batch_normal_3 = nn.BatchNorm3d(128)                                       #normalize the output of the third convolutional layer
+        self.pooling_layer_3 = nn.AdaptiveAvgPool3d(1)                                  #global average pooling, has an output of 128x1x1x1
 
-        self.fully_connected = nn.Linear(128, num_classes)
+        self.fully_connected = nn.Linear(128, num_classes)                              #final fully connected layer used for classiciation
 
     def forward(self, x):
-        x = self.pooling_layer_1(F.relu(self.batch_normal_1(self.conv_layer_1(x))))
-        x = self.pooling_layer_2(F.relu(self.batch_normal_2(self.conv_layer_2(x))))
-        x = self.pooling_layer_3(F.relu(self.batch_normal_3(self.conv_layer_3(x))))
-        x = x.view(x.size(0), -1)
-        return self.fully_connected(x)
+        x = self.pooling_layer_1(F.relu(self.batch_normal_1(self.conv_layer_1(x))))     #first convolutional layer -> batch normalization -> ReLU -> pooling 
+        x = self.pooling_layer_2(F.relu(self.batch_normal_2(self.conv_layer_2(x))))     #second convolutional layer -> batch normalization -> ReLU -> pooling 
+        x = self.pooling_layer_3(F.relu(self.batch_normal_3(self.conv_layer_3(x))))     #third convolutional layer -> batch normalization -> ReLU -> pooling 
+        x = x.view(x.size(0), -1)                                                       #flatten
+        return self.fully_connected(x)                                                  #fully connected layer 
+
 
 class MRIDataset(Dataset):
     def __init__(self, image_dir, csv_path, target_size=(64,64)):
