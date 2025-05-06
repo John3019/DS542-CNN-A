@@ -1,0 +1,17 @@
+program: custom_cnn_3d.py
+method: bayes
+project: 3D_CNN
+metric:
+  name: val_acc
+  goal: maximize
+parameters:
+  epochs:
+    values: [10, 25, 50]
+  learning_rate:
+    min: 0.0001
+    max: 0.001
+  batch_size:
+    values: [2, 4, 8]
+  optimizer:
+    values: ["adam", "sgd"]
+count: 15
